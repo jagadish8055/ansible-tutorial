@@ -1,58 +1,44 @@
 pipeline {
-    agent {
-        label 'terraform'
-    }
-    environment { 
-        AWS_ACCESS_KEY_ID     = credentials('jenkins-secret-key') 
+    agent any
+    environment {
+        AWS_ACCESS_KEY_ID     = credentials('jenkins-secret-key')
         AWS_SECRET_ACCESS_KEY = credentials('jenkins-secret')
     }
     stages {
-        stage('Initialize Terraform') {
+        stage('Terraform Initialization') {
             steps {
                 sh 'terraform init'
+                sh 'pwd'
+                sh 'ls -al'
+                sh 'printenv'
             }
         }
-        stage('Format config files') {
+        stage('Terraform Format') {
             steps {
-                sh 'terraform fmt -check=0 || exit 1'
+                sh 'terraform fmt -check'
             }
         }
-        stage('Validate config files') {
+        stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
             }
         }
-        stage('Generate Plan') {
+        stage('Terraform Planning') {
             steps {
-                sh 'terraform plan -out=terraformplan'
-                sh 'terraform show -json ./terraformplan > terraform_plan.json'
+                sh 'terraform plan -no-color'
+                input message: "Approve build or Discard?"
             }
         }
-        stage('Publish artifacts for terraform plan') {
+        stage('Terraform Apply') {
             steps {
-                archiveArtifacts artifacts: 'terraform_plan.json', excludes: 'output/*.md', onlyIfSuccessful: true
+                sh 'terraform apply -auto-approve'
             }
         }
-        stage('Run terraform apply or not?') {
+        stage('Terraform Destroy') {
             steps {
-                script {
-                    env.selected_action = input  message: 'Select action to perform',ok : 'Proceed',id :'tag_id',
-                    parameters:[choice(choices: ['apply', 'destroy', 'abort'], description: 'Select action', name: 'action')]
-                }
+                sh 'terraform destroy -auto-approve'
+                input message: "Approve Destroying of resource build or Discard?"
             }
-        }
-        stage('Terraform apply') { 
-            steps {
-                script {
-                    if (env.selected_action == "apply") {
-                        sh 'terraform apply -auto-approve'
-                    } else if (env.selected_action == "destroy") {
-                        sh 'terraform destroy -auto-approve'
-                    } else {
-                        echo 'No need to create a resource as of now,so aborted!!!'
-                    }
-                }
-            } 
         }
     }
 }
